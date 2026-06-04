@@ -323,7 +323,7 @@ EXECUTE FUNCTION update_is_latest();
 
 ---
 
-##Relationships
+## Relationships
 
 assignment → crisis_report
 assignment.report_id → crisis_report.report_id
