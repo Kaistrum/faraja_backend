@@ -1,0 +1,10 @@
+Django==5.2  # Core web framework
+djangorestframework>=3.15.2  # Build REST APIs
+psycopg2-binary>=2.9.9  # PostgreSQL database adapter
+django-cors-headers>=4.6  # Handle cross-origin requests (frontend ↔ backend)
+Pillow>=10.3  # Image processing (uploads, resizing, etc.)
+python-dotenv>=1.0.1  # Load environment variables from .env file
+gunicorn>=22.0.0  # Production WSGI server for Django
+django-environ>=0.11.2  # Manage settings via environment variables
+django-filter>=24.0  # Filtering support for DRF queries
+drf-spectacular>=0.27.0  # Auto-generate OpenAPI/Swagger API docs

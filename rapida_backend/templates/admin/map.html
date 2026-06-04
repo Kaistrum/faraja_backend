@@ -1,0 +1,278 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block title %}Crisis Reports Map | Admin{% endblock %}
+
+{% block extrahead %}
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        #map {
+            width: 100%;
+            height: 600px;
+            border-radius: 4px;
+            margin-top: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        
+        .map-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            border-left: 4px solid #417690;
+        }
+        
+        .map-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .stat-box {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid #417690;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #417690;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .damage-legend {
+            background: white;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 0 1px #ccc;
+        }
+        
+        .color-critical { background: #f44336; }
+        .color-partial { background: #ff9800; }
+        .color-minimal { background: #4caf50; }
+        
+        .reports-list {
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        
+        .report-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .report-item:hover {
+            background: #f5f5f5;
+        }
+        
+        .report-item:last-child {
+            border-bottom: none;
+        }
+        
+        .report-event {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .report-meta {
+            font-size: 12px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Crisis Reports Map</h1>
+    
+    <div class="map-info">
+        <p><strong>Overview:</strong> Interactive map visualization of all submitted crisis reports. Click on markers to see details or click on reports below to navigate.</p>
+        
+        <div class="map-stats">
+            <div class="stat-box">
+                <div class="stat-value" id="stat-total">0</div>
+                <div class="stat-label">Total Reports</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-critical">0</div>
+                <div class="stat-label">Critical</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-pending">0</div>
+                <div class="stat-label">Pending</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-value" id="stat-resolved">0</div>
+                <div class="stat-label">Resolved</div>
+            </div>
+        </div>
+    </div>
+    
+    <div id="map"></div>
+    
+    <div class="damage-legend">
+        <strong style="grid-column: 1 / -1;">Damage Level Legend:</strong>
+        <div class="legend-item">
+            <div class="legend-color color-critical"></div>
+            <span>Complete Damage</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color color-partial"></div>
+            <span>Partial Damage</span>
+        </div>
+        <div class="legend-item">
+            <div class="legend-color color-minimal"></div>
+            <span>Minimal Damage</span>
+        </div>
+    </div>
+    
+    <h2 style="margin-top: 40px;">Recent Reports</h2>
+    <div class="reports-list" id="reports-list">
+        <div style="padding: 20px; text-align: center; color: #999;">Loading reports...</div>
+    </div>
+</div>
+
+<script>
+    // Initialize map
+    const map = L.map('map').setView([20, 0], 2);
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(map);
+    
+    const markers = {};
+    
+    // Fetch reports from API
+    async function loadReports() {
+        try {
+            const response = await fetch('/api/reports/');
+            const data = await response.json();
+            
+            const reports = data.results ? data.results : data;
+            
+            // Clear existing markers
+            Object.values(markers).forEach(marker => marker.remove());
+            Object.keys(markers).forEach(key => delete markers[key]);
+            
+            // Add markers and populate sidebar
+            const reportsList = document.getElementById('reports-list');
+            reportsList.innerHTML = '';
+            
+            let stats = { total: 0, critical: 0, pending: 0, resolved: 0 };
+            
+            reports.forEach(report => {
+                stats.total++;
+                if (report.damage_level === 'complete') stats.critical++;
+                if (report.status === 'pending') stats.pending++;
+                if (report.status === 'resolved') stats.resolved++;
+                
+                // Add marker to map if coordinates exist
+                if (report.latitude && report.longitude) {
+                    const damageColor = {
+                        'minimal': '#4caf50',
+                        'partial': '#ff9800',
+                        'complete': '#f44336'
+                    }[report.damage_level] || '#667eea';
+                    
+                    const marker = L.circleMarker([report.latitude, report.longitude], {
+                        radius: 8,
+                        fillColor: damageColor,
+                        color: '#fff',
+                        weight: 2,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).addTo(map);
+                    
+                    marker.bindPopup(`
+                        <strong>${report.event_name}</strong><br>
+                        <strong>Event ID:</strong> ${report.event_id}<br>
+                        <strong>Damage:</strong> ${report.damage_level}<br>
+                        <strong>Status:</strong> ${report.status}<br>
+                        <strong>Type:</strong> ${report.infrastructure_type}
+                    `);
+                    
+                    markers[report.report_id] = marker;
+                }
+                
+                // Add to sidebar
+                const reportEl = document.createElement('div');
+                reportEl.className = 'report-item';
+                reportEl.innerHTML = `
+                    <div class="report-event">${report.event_name}</div>
+                    <div class="report-meta">
+                        <strong>Event ID:</strong> ${report.event_id}<br>
+                        <strong>Damage:</strong> <span style="color: ${report.damage_level === 'complete' ? '#f44336' : report.damage_level === 'partial' ? '#ff9800' : '#4caf50'}; font-weight: bold;">${report.damage_level.toUpperCase()}</span><br>
+                        <strong>Status:</strong> ${report.status}
+                    </div>
+                `;
+                
+                reportEl.addEventListener('click', () => {
+                    if (report.latitude && report.longitude) {
+                        map.setView([report.latitude, report.longitude], 15);
+                        if (markers[report.report_id]) {
+                            markers[report.report_id].openPopup();
+                        }
+                    }
+                });
+                
+                reportsList.appendChild(reportEl);
+            });
+            
+            // Update stats
+            document.getElementById('stat-total').textContent = stats.total;
+            document.getElementById('stat-critical').textContent = stats.critical;
+            document.getElementById('stat-pending').textContent = stats.pending;
+            document.getElementById('stat-resolved').textContent = stats.resolved;
+            
+            if (reports.length === 0) {
+                reportsList.innerHTML = '<div style="padding: 20px; text-align: center; color: #999;">No reports found</div>';
+            }
+            
+        } catch (error) {
+            document.getElementById('reports-list').innerHTML = 
+                `<div style="padding: 20px; color: #f44336;">Error loading reports: ${error.message}</div>`;
+            console.error('Error loading reports:', error);
+        }
+    }
+    
+    // Load reports on page load
+    loadReports();
+    
+    // Refresh every 30 seconds
+    setInterval(loadReports, 30000);
+</script>
+{% endblock %}
