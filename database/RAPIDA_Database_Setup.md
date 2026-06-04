@@ -323,6 +323,26 @@ EXECUTE FUNCTION update_is_latest();
 
 ---
 
+## Relationships
+
+### `assignment` → `crisis_report`
+- `assignment.report_id` → `crisis_report.report_id`
+- One report can have many assignments. A field enumerator is sent to follow up on a specific report.
+
+### `assignment` → `responders`
+- `assignment.responder_id` → `responders.responder_id`
+- `assignment.assigned_by` → `responders.responder_id`
+- One responder can have many assignments. `assigned_by` tracks which supervisor created the assignment.
+
+### `crisis_report` → `crisis_report` (Self-referencing)
+- `crisis_report.previous_report_id` → `crisis_report.report_id`
+- `crisis_report.duplicate_of_report_id` → `crisis_report.report_id`
+
+Two self-references on the same table:
+- `previous_report_id` — links a new report version to the old one (versioning)
+- `duplicate_of_report_id` — links a duplicate report to the original
+
+
 ## Step 6 — Verify Everything
 
 Run these inside psql:
