@@ -42,46 +42,35 @@ rapida_admin = CustomAdminSite()
 # ==================================================
 @admin.register(CrisisReport, site=rapida_admin)
 class CrisisReportAdmin(admin.ModelAdmin):
-    list_display = ['event_name', 'event_id', 'damage_level', 'status', 'infrastructure_type', 'created_at']
-    list_filter = ['damage_level', 'status', 'nature_of_crisis', 'infrastructure_type', 'is_verified', 'created_at']
-    search_fields = ['event_name', 'event_id', 'location_text', 'description']
-    readonly_fields = ['report_id', 'created_at', 'updated_at', 'ai_confidence', 'ai_description']
-    
+    list_display = ['report_id', 'building_footprint_id', 'infrastructure_type', 'nature_of_crisis', 'damage_level', 'is_latest', 'submitted_at']
+    list_filter = ['damage_level', 'infrastructure_type', 'nature_of_crisis', 'is_latest', 'submitted_at']
+    search_fields = ['report_id', 'building_footprint_id', 'photo_url']
+    readonly_fields = ['report_id', 'created_at', 'updated_at']
+
     fieldsets = (
         ('Report Identity', {
-            'fields': ('report_id', 'event_id', 'event_name', 'version_number', 'is_latest', 'previous_report')
+            'fields': ('report_id', 'client_id', 'is_latest')
         }),
         ('Location Information', {
-            'fields': ('latitude', 'longitude', 'location_text')
+            'fields': ('lat', 'lon', 'location_description')
         }),
         ('Infrastructure Details', {
-            'fields': ('infrastructure_type', 'infrastructure_name', 'affected_units')
+            'fields': ('infrastructure_type', 'nature_of_crisis', 'building_footprint_id', 'affected_units', 'debris')
         }),
-        ('Crisis Information', {
-            'fields': ('nature_of_crisis', 'damage_level', 'description', 'debris_clearing_needed')
+        ('User Assessment', {
+            'fields': ('damage_level', 'photo_url')
         }),
         ('AI Analysis', {
-            'fields': ('ai_damage_level', 'ai_confidence', 'ai_description'),
-            'classes': ('collapse',)
-        }),
-        ('Submission Details', {
-            'fields': ('submitter_token', 'submission_channel', 'language'),
-            'classes': ('collapse',)
-        }),
-        ('Workflow', {
-            'fields': ('status', 'is_duplicate', 'duplicate_of')
-        }),
-        ('Verification', {
-            'fields': ('is_verified', 'verified_by', 'verified_at'),
+            'fields': ('ai_damage_level', 'ai_disaster_type', 'ai_informativeness', 'ai_humanitarian_category', 'ai_damage_severity'),
             'classes': ('collapse',)
         }),
         ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
+            'fields': ('submitted_at', 'processed_at', 'created_at', 'updated_at'),
             'classes': ('collapse',)
         }),
     )
-    
-    ordering = ['-created_at']
+
+    ordering = ['-submitted_at']
 
 
 # ==================================================

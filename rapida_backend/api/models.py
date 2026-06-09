@@ -1,5 +1,9 @@
 import uuid
+from datetime import datetime
+
 from django.db import models
+from django.utils import timezone
+from django.core.exceptions import ImproperlyConfigured
 
 
 # ==================================================
@@ -7,6 +11,62 @@ from django.db import models
 # ==================================================
 class CrisisReport(models.Model):
 
+    class DamageLevel(models.TextChoices):
+        MINIMAL = 'minimal', 'Minimal'
+        PARTIAL = 'partial', 'Partial'
+        COMPLETE = 'complete', 'Complete'
+
+    class AIDamageLevel(models.TextChoices):
+        MINIMAL = 'minimal', 'Minimal'
+        PARTIAL = 'partial', 'Partial'
+        COMPLETE = 'complete', 'Complete'
+
+    class AIDisasterType(models.TextChoices):
+        EARTHQUAKE = 'earthquake', 'Earthquake'
+        FIRE = 'fire', 'Fire'
+        FLOOD = 'flood', 'Flood'
+        HURRICANE = 'hurricane', 'Hurricane'
+        LANDSLIDE = 'landslide', 'Landslide'
+        NOT_DISASTER = 'not_disaster', 'Not disaster'
+        OTHER = 'other_disaster', 'Other'
+
+    class AIInformativeness(models.TextChoices):
+        INFORMATIVE = 'informative', 'Informative'
+        NOT_INFORMATIVE = 'not_informative', 'Not informative'
+
+    class AIHumanitarianCategory(models.TextChoices):
+        AFFECTED = 'affected_injured_or_dead_people', 'Affected/injured/dead people'
+        INFRA = 'infrastructure_and_utility_damage', 'Infrastructure and utility damage'
+        NOT_HUM = 'not_humanitarian', 'Not humanitarian'
+        RESCUE = 'rescue_volunteering_or_donation_effort', 'Rescue/volunteering/donation effort'
+
+    class AIDamageSeverity(models.TextChoices):
+        LITTLE = 'little_or_no_damage', 'Little or no damage'
+        MILD = 'mild_damage', 'Mild damage'
+        SEVERE = 'severe_damage', 'Severe damage'
+
+    # Identity
+    report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client_id = models.UUIDField(null=True, blank=True, unique=True)
+
+    # Location
+    lat = models.FloatField(null=True, blank=True)
+    lon = models.FloatField(null=True, blank=True)
+    # Store location as GeoJSON dict: {"type": "Point", "coordinates": [lon, lat]}
+    location = models.JSONField(null=True, blank=True)
+    location_description = models.TextField(null=True, blank=True)
+
+    # Linking / footprint
+    building_footprint_id = models.CharField(max_length=255, null=True, blank=True)
+
+    # Versioning
+    is_latest = models.BooleanField(default=True)
+
+    # Submission timestamps
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    processed_at = models.DateTimeField(null=True, blank=True)
+
+    # Infrastructure
     INFRASTRUCTURE_TYPES = [
         ('residential', 'Residential'),
         ('commercial', 'Commercial'),
@@ -18,7 +78,7 @@ class CrisisReport(models.Model):
         ('other', 'Other'),
     ]
 
-    NATURE_OF_CRISIS = [
+    NATURE_OF_CRISIS_TYPES = [
         ('earthquake', 'Earthquake'),
         ('flood', 'Flood'),
         ('tsunami', 'Tsunami'),
@@ -28,111 +88,58 @@ class CrisisReport(models.Model):
         ('conflict', 'Conflict'),
         ('civil_unrest', 'Civil Unrest'),
         ('chemical', 'Chemical Incident'),
+        ('other', 'Other'),
     ]
 
-    DAMAGE_LEVELS = [
-        ('minimal', 'Minimal'),
-        ('partial', 'Partial'),
-        ('complete', 'Complete'),
-    ]
+    infrastructure_type = models.CharField(max_length=50, choices=INFRASTRUCTURE_TYPES, null=True, blank=True)
+    nature_of_crisis = models.CharField(max_length=50, choices=NATURE_OF_CRISIS_TYPES, null=True, blank=True)
+    debris = models.BooleanField(default=False)
 
-    STATUS = [
-        ('pending', 'Pending'),
-        ('acknowledged', 'Acknowledged'),
-        ('in_progress', 'In Progress'),
-        ('resolved', 'Resolved'),
-    ]
+    # User-submitted
+    affected_units = models.PositiveIntegerField(null=True, blank=True)
+    damage_level = models.CharField(max_length=20, choices=DamageLevel.choices, null=True, blank=True)
 
-    SUBMISSION_CHANNELS = [
-        ('web', 'Web'),
-        ('mobile', 'Mobile'),
-        ('whatsapp', 'WhatsApp'),
-        ('offline', 'Offline'),
-    ]
+    # Photo as URL (no file upload stored in DB)
+    photo_url = models.TextField(null=True, blank=True)
 
-    LANGUAGES = [
-        ('en', 'English'),
-        ('fr', 'French'),
-        ('es', 'Spanish'),
-        ('ar', 'Arabic'),
-        ('ru', 'Russian'),
-        ('zh', 'Chinese'),
-    ]
+    # AI-populated fields (nullable, filled by worker)
+    ai_damage_level = models.CharField(max_length=32, choices=AIDamageLevel.choices, null=True, blank=True)
+    ai_disaster_type = models.CharField(max_length=32, choices=AIDisasterType.choices, null=True, blank=True)
+    ai_informativeness = models.CharField(max_length=32, choices=AIInformativeness.choices, null=True, blank=True)
+    ai_humanitarian_category = models.CharField(max_length=64, choices=AIHumanitarianCategory.choices, null=True, blank=True)
+    ai_damage_severity = models.CharField(max_length=32, choices=AIDamageSeverity.choices, null=True, blank=True)
 
-    # Identity
-    report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    event_id = models.CharField(max_length=100)
-    event_name = models.CharField(max_length=255)
-
-    # Versioning
-    version_number = models.IntegerField(default=1)
-    is_latest = models.BooleanField(default=True)
-
-    previous_report = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="next_versions"
-    )
-
-    # Location
-    latitude = models.FloatField(null=True, blank=True)
-    longitude = models.FloatField(null=True, blank=True)
-    location_text = models.TextField(null=True, blank=True)
-
-    # Infrastructure
-    infrastructure_type = models.CharField(max_length=50, choices=INFRASTRUCTURE_TYPES)
-    infrastructure_name = models.CharField(max_length=255, null=True, blank=True)
-    affected_units = models.IntegerField(default=1)
-
-    # Crisis
-    nature_of_crisis = models.CharField(max_length=50, choices=NATURE_OF_CRISIS)
-    damage_level = models.CharField(max_length=20, choices=DAMAGE_LEVELS)
-    description = models.TextField(null=True, blank=True)
-    debris_clearing_needed = models.BooleanField(default=False)
-
-    # Media
-    photos = models.JSONField(default=list, blank=True)
-
-    # AI fields
-    ai_damage_level = models.CharField(max_length=50, null=True, blank=True)
-    ai_confidence = models.FloatField(null=True, blank=True)
-    ai_description = models.TextField(null=True, blank=True)
-
-    # Submission
-    submitter_token = models.CharField(max_length=255, null=True, blank=True)
-    submission_channel = models.CharField(max_length=50, choices=SUBMISSION_CHANNELS, null=True, blank=True)
-    language = models.CharField(max_length=10, choices=LANGUAGES, default='en')
-
-    # Workflow
-    status = models.CharField(max_length=50, choices=STATUS, default='pending')
-
+    # Raw payload / metadata
     raw_payload = models.JSONField(default=dict, blank=True)
-    # Duplicate detection
-    is_duplicate = models.BooleanField(default=False)
-    duplicate_of = models.ForeignKey(
-        "self",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="duplicates"
-    )
-
-    # Verification
-    is_verified = models.BooleanField(default=False)
-    verified_by = models.UUIDField(null=True, blank=True)
-    verified_at = models.DateTimeField(null=True, blank=True)
-
-    # Custom AI responses
-    custom_responses = models.JSONField(default=dict, blank=True)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        indexes = [
+            models.Index(fields=['building_footprint_id', 'is_latest']),
+            models.Index(fields=['ai_disaster_type']),
+            models.Index(fields=['ai_damage_severity']),
+            models.Index(fields=['-submitted_at']),
+        ]
+
+    def save(self, *args, **kwargs):
+        # auto-populate point from lat/lon
+        if (self.lat is not None) and (self.lon is not None):
+            # store as GeoJSON
+            try:
+                self.location = {"type": "Point", "coordinates": [float(self.lon), float(self.lat)]}
+            except Exception:
+                self.location = None
+
+        if not self.submitted_at:
+            self.submitted_at = self.submitted_at or None
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.event_name} - {self.damage_level}"
+        return str(self.report_id)
 
 
 # ==================================================

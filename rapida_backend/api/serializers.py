@@ -1,69 +1,63 @@
 from rest_framework import serializers
+from django.utils import timezone
 from .models import CrisisReport, Responder, Assignment
 
 
 # ==================================================
 # CRISIS REPORT SERIALIZER
 # ==================================================
-class CrisisReportSerializer(serializers.ModelSerializer):
-
+class SubmitSerializer(serializers.ModelSerializer):
     class Meta:
         model = CrisisReport
-        fields = "__all__"
-        read_only_fields = (
-            "report_id",
-            "created_at",
-            "updated_at",
-            "is_latest",
-            "raw_payload"
+        fields = (
+            'client_id', 'lat', 'lon', 'location_description', 'building_footprint_id', 'infrastructure_type',
+            'nature_of_crisis', 'debris', 'affected_units', 'damage_level', 'photo_url', 'submitted_at', 'raw_payload'
         )
+        read_only_fields = ('raw_payload',)
 
     def validate(self, data):
-        """
-        Validation logic for crisis report
-        """
-        
-        # Validate coordinates if provided
-        lat = data.get("latitude")
-        lon = data.get("longitude")
-
+        lat = data.get('lat')
+        lon = data.get('lon')
         if lat is not None and (lat < -90 or lat > 90):
-            raise serializers.ValidationError({"latitude": "Invalid latitude value. Must be between -90 and 90."})
-
+            raise serializers.ValidationError({'lat': 'Invalid latitude value. Must be between -90 and 90.'})
         if lon is not None and (lon < -180 or lon > 180):
-            raise serializers.ValidationError({"longitude": "Invalid longitude value. Must be between -180 and 180."})
-
-        # Ensure required fields have values
-        if not data.get("event_name"):
-            raise serializers.ValidationError({"event_name": "Event name is required."})
-        
-        if not data.get("event_id"):
-            raise serializers.ValidationError({"event_id": "Event ID is required."})
-
-        if not data.get("infrastructure_type"):
-            raise serializers.ValidationError({"infrastructure_type": "Infrastructure type is required."})
-
-        if not data.get("nature_of_crisis"):
-            raise serializers.ValidationError({"nature_of_crisis": "Nature of crisis is required."})
-
-        if not data.get("damage_level"):
-            raise serializers.ValidationError({"damage_level": "Damage level is required."})
-
+            raise serializers.ValidationError({'lon': 'Invalid longitude value. Must be between -180 and 180.'})
         return data
 
     def create(self, validated_data):
-        """
-        Capture full survey/raw request payload
-        """
-        try:
-            request = self.context.get("request")
+        request = self.context.get('request')
+        if request:
+            validated_data['raw_payload'] = dict(request.data)
+            # allow submitted_at override, else set now
+            if not validated_data.get('submitted_at'):
+                validated_data['submitted_at'] = timezone.now()
+        return super().create(validated_data)
 
-            if request:
-                validated_data["raw_payload"] = dict(request.data)
 
-            return super().create(validated_data)
-        except Exception as e:
-            raise serializers.ValidationError(f"Error creating report: {str(e)}")
+class FullSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CrisisReport
+        fields = '__all__'
+        read_only_fields = ('report_id', 'created_at', 'updated_at', 'raw_payload')
+
+
+class CrisisReportGeoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CrisisReport
+        fields = (
+            'report_id', 'client_id', 'lat', 'lon', 'location', 'building_footprint_id',
+            'infrastructure_type', 'nature_of_crisis', 'damage_level', 'photo_url', 'submitted_at', 'processed_at',
+            'is_latest', 'ai_disaster_type', 'ai_damage_severity', 'ai_informativeness'
+        )
+
+
+class CrisisReportListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CrisisReport
+        fields = (
+            'report_id', 'client_id', 'lat', 'lon', 'building_footprint_id', 'infrastructure_type',
+            'nature_of_crisis', 'damage_level', 'photo_url', 'submitted_at', 'is_latest'
+        )
 
 
 # ==================================================
