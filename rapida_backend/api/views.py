@@ -50,7 +50,7 @@ class LandingPageView(APIView):
                     "lat": "Float - latitude (write: used to set location)",
                     "lon": "Float - longitude (write: used to set location)",
                     "location": "GeoJSON Point - {'type':'Point','coordinates':[lon,lat]}",
-                    "location_description": "String",
+                    "location_description": "Free-text place description, e.g. 'Near the central market'",
                     "building_footprint_id": "String",
                     "infrastructure_type": "Enum: residential | commercial | government | utility | transport | community | recreation | other",
                     "nature_of_crisis": "Enum: earthquake | flood | tsunami | cyclone | wildfire | explosion | conflict | civil_unrest | chemical | other",
@@ -67,7 +67,7 @@ class LandingPageView(APIView):
                     "lat": "Float - latitude (read)",
                     "lon": "Float - longitude (read)",
                     "location": "GeoJSON Point - {'type':'Point','coordinates':[lon,lat]}",
-                    "location_description": "String",
+                    "location_description": "Landmark-based site description, e.g. 'Behind the old railway station'",
                     "building_footprint_id": "String",
                     "infrastructure_type": "Enum: residential | commercial | government | utility | transport | community | recreation | other",
                     "nature_of_crisis": "Enum: earthquake | flood | tsunami | cyclone | wildfire | explosion | conflict | civil_unrest | chemical | other",
@@ -88,7 +88,7 @@ class LandingPageView(APIView):
                     "lat": "Float - latitude (write: used to set location)",
                     "lon": "Float - longitude (write: used to set location)",
                     "location": "GeoJSON Point - {'type':'Point','coordinates':[lon,lat]}",
-                    "location_description": "String",
+                    "location_description": "Where the responder is deployed, e.g. 'Outside the main hospital gate'",
                 }
             }
         })
@@ -106,7 +106,7 @@ class CrisisReportViewSet(viewsets.ModelViewSet):
     ordering_fields = ['submitted_at', 'damage_level']
 
     def get_queryset(self):
-        return CrisisReport.objects.filter(is_latest=True)
+        return CrisisReport.objects.all()
 
     def get_serializer_class(self):
         if self.action == 'create':
@@ -157,8 +157,6 @@ class CrisisReportViewSet(viewsets.ModelViewSet):
             return Response(out_serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            import traceback
-            traceback.print_exc()
             return Response(
                 {
                     "error": str(e),
@@ -272,23 +270,6 @@ class FinalCrisisReportViewSet(viewsets.ReadOnlyModelViewSet):
         qs = FinalCrisisReport.objects.filter(building_footprint_id=bf)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def geometry(self, request):
-        """Get all final reports with geometry for mapping (GeoJSON-like)"""
-        qs = FinalCrisisReport.objects.all()
-        serializer = FinalCrisisReportListSerializer(qs, many=True)
-        return Response({
-            'type': 'FeatureCollection',
-            'features': [
-                {
-                    'type': 'Feature',
-                    'geometry': item['geometry'],
-                    'properties': {k: v for k, v in item.items() if k != 'geometry'}
-                }
-                for item in serializer.data
-            ]
-        })
 
 
 # ==================================================

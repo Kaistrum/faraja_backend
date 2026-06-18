@@ -50,8 +50,10 @@ class CrisisReport(models.Model):
     client_id = models.UUIDField(null=True, blank=True, unique=True)
 
     # Location
+    lat = models.FloatField(null=True, blank=True)
+    lon = models.FloatField(null=True, blank=True)
     location = models.PointField(null=True, blank=True, srid=4326)
-    location_description = models.TextField(null=True, blank=True)
+    location_description = models.TextField(null=True, blank=True, help_text="Natural language place description, e.g. 'Near the central market' or 'Beside the collapsed school building'")
 
     # Linking / footprint
     building_footprint_id = models.CharField(max_length=255, null=True, blank=True)
@@ -106,9 +108,6 @@ class CrisisReport(models.Model):
     ai_humanitarian_category = models.CharField(max_length=64, choices=AIHumanitarianCategory.choices, null=True, blank=True)
     ai_damage_severity = models.CharField(max_length=32, choices=AIDamageSeverity.choices, null=True, blank=True)
 
-    # Raw payload / metadata
-    raw_payload = models.JSONField(default=dict, blank=True)
-
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -121,10 +120,27 @@ class CrisisReport(models.Model):
             models.Index(fields=['-submitted_at']),
         ]
 
-    def save(self, *args, **kwargs):
-        if not self.submitted_at:
-            self.submitted_at = self.submitted_at or None
+    def _auto_location_description(self):
+        type_labels = dict(self.INFRASTRUCTURE_TYPES)
+        crisis_labels = dict(self.NATURE_OF_CRISIS_TYPES)
+        infra = type_labels.get(self.infrastructure_type) if self.infrastructure_type else None
+        crisis = crisis_labels.get(self.nature_of_crisis) if self.nature_of_crisis else None
+        if infra and crisis:
+            return f"{infra} site affected by {crisis.lower()}"
+        if infra:
+            return f"{infra} structure"
+        if crisis:
+            return f"Site affected by {crisis.lower()}"
+        return "Affected site"
 
+    def save(self, *args, **kwargs):
+        if self.location:
+            self.lat = self.location.y
+            self.lon = self.location.x
+        if not self.location_description:
+            self.location_description = self._auto_location_description()
+        if not self.submitted_at:
+            self.submitted_at = None
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -153,7 +169,7 @@ class Responder(models.Model):
     last_login = models.DateTimeField(null=True, blank=True)
 
     location = models.PointField(null=True, blank=True, srid=4326)
-    location_description = models.TextField(null=True, blank=True, help_text="Human-readable location description")
+    location_description = models.TextField(null=True, blank=True, help_text="Where the responder is currently deployed, e.g. 'Outside the main hospital gate' or 'At the northern checkpoint'")
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -332,11 +348,13 @@ class FinalCrisisReport(models.Model):
     # Identity
     report_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     client_id = models.UUIDField(null=True, blank=True)
-    original_report_id = models.UUIDField(null=True, blank=True, help_text="Reference to source CrisisReport")
+    original_report_id = models.UUIDField(null=True, blank=True, unique=True, help_text="Reference to source CrisisReport")
 
     # Location
+    lat = models.FloatField(null=True, blank=True)
+    lon = models.FloatField(null=True, blank=True)
     location = models.PointField(null=True, blank=True, srid=4326)
-    location_description = models.TextField(null=True, blank=True)
+    location_description = models.TextField(null=True, blank=True, help_text="Landmark-based description of the affected site, e.g. 'Behind the old railway station' or 'Ground floor of the red brick building'")
 
     # Linking / footprint
     building_footprint_id = models.CharField(max_length=255, null=True, blank=True)
@@ -388,9 +406,6 @@ class FinalCrisisReport(models.Model):
     ai_humanitarian_category = models.CharField(max_length=64, choices=AIHumanitarianCategory.choices, null=True, blank=True)
     ai_damage_severity = models.CharField(max_length=32, choices=AIDamageSeverity.choices, null=True, blank=True)
 
-    # Raw payload / metadata
-    raw_payload = models.JSONField(default=dict, blank=True)
-
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -402,6 +417,27 @@ class FinalCrisisReport(models.Model):
             models.Index(fields=['ai_disaster_type']),
             models.Index(fields=['-submitted_at']),
         ]
+
+    def _auto_location_description(self):
+        type_labels = dict(self.INFRASTRUCTURE_TYPES)
+        crisis_labels = dict(self.NATURE_OF_CRISIS_TYPES)
+        infra = type_labels.get(self.infrastructure_type) if self.infrastructure_type else None
+        crisis = crisis_labels.get(self.nature_of_crisis) if self.nature_of_crisis else None
+        if infra and crisis:
+            return f"{infra} site affected by {crisis.lower()}"
+        if infra:
+            return f"{infra} structure"
+        if crisis:
+            return f"Site affected by {crisis.lower()}"
+        return "Affected site"
+
+    def save(self, *args, **kwargs):
+        if self.location:
+            self.lat = self.location.y
+            self.lon = self.location.x
+        if not self.location_description:
+            self.location_description = self._auto_location_description()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return str(self.report_id)

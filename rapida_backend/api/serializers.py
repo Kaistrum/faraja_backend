@@ -54,9 +54,8 @@ class SubmitSerializer(serializers.ModelSerializer):
         fields = (
             'client_id', 'lat', 'lon', 'location', 'location_description',
             'building_footprint_id', 'infrastructure_type', 'nature_of_crisis',
-            'debris', 'affected_units', 'damage_level', 'photo_url', 'submitted_at', 'raw_payload',
+            'debris', 'affected_units', 'damage_level', 'photo_url', 'submitted_at',
         )
-        read_only_fields = ('raw_payload',)
 
     def validate(self, data):
         lat = data.pop('lat', None)
@@ -70,9 +69,6 @@ class SubmitSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        request = self.context.get('request')
-        if request:
-            validated_data['raw_payload'] = dict(request.data)
         if not validated_data.get('submitted_at'):
             validated_data['submitted_at'] = timezone.now()
         return super().create(validated_data)
@@ -238,10 +234,3 @@ class FinalCrisisReportListSerializer(serializers.ModelSerializer):
 
     def get_lon(self, obj):
         return obj.location.x if obj.location else None
-
-
-class DuplicateCheckSerializer(serializers.Serializer):
-    is_duplicate = serializers.BooleanField()
-    matched_report_id = serializers.UUIDField(required=False, allow_null=True)
-    reason = serializers.CharField()
-    report_data = FinalCrisisReportSerializer(required=False, allow_null=True)
