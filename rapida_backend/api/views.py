@@ -6,6 +6,7 @@ from django.views.generic import TemplateView
 from django.http import JsonResponse
 from django.utils import timezone
 from django.db import models
+from django.contrib.auth.hashers import check_password
 from datetime import timedelta
 
 from django_filters.rest_framework import DjangoFilterBackend
@@ -14,13 +15,11 @@ from .models import CrisisReport, Responder, Assignment, FinalCrisisReport, is_d
 from .serializers import (
     SubmitSerializer,
     FullSerializer,
-    CrisisReportGeoSerializer,
     CrisisReportListSerializer,
     ResponderSerializer,
     AssignmentSerializer,
     FinalCrisisReportSerializer,
     FinalCrisisReportListSerializer,
-    DuplicateCheckSerializer,
 )
 
 
@@ -29,7 +28,7 @@ from .serializers import (
 # ==================================================
 class LandingPageView(APIView):
     """Landing page showing all available endpoints"""
-    
+
     def get(self, request):
         host = request.get_host()
         base = f"http://{host}"
@@ -37,124 +36,61 @@ class LandingPageView(APIView):
             "title": "RAPIDA API",
             "description": "UNDP Crisis Damage Assessment API",
             "version": "1.0.0",
+            "docs": f"{base}/api/schema/swagger-ui/",
             "endpoints": {
-                "documentation": {
-                    "Swagger UI": f"{base}/api/schema/swagger-ui/",
-                    "ReDoc": f"{base}/api/schema/redoc/",
-                    "OpenAPI JSON": f"{base}/api/schema/",
-                },
-                "visualization": {
-                    "Crisis Map (web)": f"{base}/map/",
-                },
-                "api": {
-                    "Crisis Reports (collection)": f"{base}/api/reports/",
-                    "Crisis Reports (detail)": f"{base}/api/reports/{'{report_id}'}/",
-                    "Reports Stats": f"{base}/api/reports/stats/",
-                    "Reports by footprint": f"{base}/api/reports/by_footprint/?building_footprint_id={{id}}",
-                    "AI patch (per report)": f"{base}/api/reports/{{report_id}}/ai-fill/",
-                    "Check duplicate status": f"{base}/api/reports/{{report_id}}/duplicate-check/",
-                    "Final Reports (dashboard)": f"{base}/api/final-reports/",
-                    "Final Reports (detail)": f"{base}/api/final-reports/{'{report_id}'}/",
-                    "Final Reports Stats": f"{base}/api/final-reports/stats/",
-                    "Final Reports by footprint": f"{base}/api/final-reports/by_footprint/?building_footprint_id={{id}}",
-                    "Final Reports GeoJSON": f"{base}/api/final-reports/geometry/",
-                    "Responders": f"{base}/api/responders/",
-                    "Responders (nearest)": f"{base}/api/responders/nearest/?lon={{longitude}}&lat={{latitude}}&max_distance={{meters}}&limit={{count}}",
-                    "Assignments": f"{base}/api/assignments/",
-                },
-                "admin": {
-                    "Admin Panel": f"{base}/admin/",
-                }
-            },
-            "workflow": {
-                "description": "Automatic CrisisReport Processing Workflow",
-                "steps": [
-                    "1. POST /api/reports/ - Submit a new CrisisReport",
-                    "2. [AUTOMATIC] Check for duplicates (signal handler triggered)",
-                    "   - Option A: If duplicate (same building OR coordinates<50m + same infrastructure + <48h) → No FinalCrisisReport created",
-                    "   - Option B: If NOT duplicate → Automatically creates FinalCrisisReport",
-                    "3. GET /api/reports/{report_id}/duplicate-check/ - Check duplicate status",
-                    "4. GET /api/final-reports/ - Fetch all verified reports for dashboards"
-                ],
-                "notes": [
-                    "FinalCrisisReports are the source of truth for dashboards",
-                    "Only non-duplicate CrisisReports generate FinalCrisisReports",
-                    "Duplicate detection happens automatically via Django signals",
-                ]
+                "Crisis Reports": f"{base}/api/reports/",
+                "Final Reports": f"{base}/api/final-reports/",
+                "Responders": f"{base}/api/responders/",
+                "Assignments": f"{base}/api/assignments/",
             },
             "schemas": {
                 "CrisisReport": {
-                    "report_id": "UUID (primary key)",
+                    "report_id": "UUID (primary key, auto)",
                     "client_id": "UUID (optional, unique)",
-                    "location": "JSON (GeoJSON Point) - {'type':'Point','coordinates':[lon,lat]}",
-                    "location_description": "Text - human readable location",
-                    "building_footprint_id": "String - external footprint id",
-                    "is_latest": "Boolean - versioning flag",
-                    "submitted_at": "DateTime (nullable)",
-                    "processed_at": "DateTime (nullable)",
-                    "infrastructure_type": "Enum - infrastructure category",
-                    "nature_of_crisis": "Enum - crisis type",
+                    "lat": "Float - latitude (write: used to set location)",
+                    "lon": "Float - longitude (write: used to set location)",
+                    "location": "GeoJSON Point - {'type':'Point','coordinates':[lon,lat]}",
+                    "location_description": "String",
+                    "building_footprint_id": "String",
+                    "infrastructure_type": "Enum: residential | commercial | government | utility | transport | community | recreation | other",
+                    "nature_of_crisis": "Enum: earthquake | flood | tsunami | cyclone | wildfire | explosion | conflict | civil_unrest | chemical | other",
                     "debris": "Boolean",
-                    "affected_units": "Integer (nullable)",
-                    "damage_level": "Enum - minimal/partial/complete",
-                    "photo_url": "Text (URL)",
-                    "ai_damage_level": "Enum (nullable)",
-                    "ai_disaster_type": "Enum (nullable)",
-                    "ai_informativeness": "Enum (nullable)",
-                    "ai_humanitarian_category": "Enum (nullable)",
-                    "ai_damage_severity": "Enum (nullable)",
-                    "raw_payload": "JSON - original submission payload",
-                    "created_at": "DateTime",
-                    "updated_at": "DateTime",
+                    "affected_units": "Integer",
+                    "damage_level": "Enum: minimal | partial | complete",
+                    "photo_url": "String (URL)",
+                    "submitted_at": "DateTime",
                 },
                 "FinalCrisisReport": {
-                    "description": "Verified, non-duplicate CrisisReport for dashboards",
-                    "report_id": "UUID (primary key)",
-                    "original_report_id": "UUID - reference to source CrisisReport",
+                    "report_id": "UUID (primary key, auto)",
+                    "original_report_id": "UUID - source CrisisReport",
                     "client_id": "UUID (optional)",
-                    "location": "JSON (GeoJSON Point) - {'type':'Point','coordinates':[lon,lat]}",
-                    "location_description": "Text - human readable location",
-                    "building_footprint_id": "String - external footprint id",
-                    "submitted_at": "DateTime (nullable)",
-                    "processed_at": "DateTime (nullable)",
-                    "infrastructure_type": "Enum - infrastructure category",
-                    "nature_of_crisis": "Enum - crisis type",
+                    "lat": "Float - latitude (read)",
+                    "lon": "Float - longitude (read)",
+                    "location": "GeoJSON Point - {'type':'Point','coordinates':[lon,lat]}",
+                    "location_description": "String",
+                    "building_footprint_id": "String",
+                    "infrastructure_type": "Enum: residential | commercial | government | utility | transport | community | recreation | other",
+                    "nature_of_crisis": "Enum: earthquake | flood | tsunami | cyclone | wildfire | explosion | conflict | civil_unrest | chemical | other",
                     "debris": "Boolean",
-                    "affected_units": "Integer (nullable)",
-                    "damage_level": "Enum - minimal/partial/complete",
-                    "photo_url": "Text (URL)",
-                    "ai_damage_level": "Enum (nullable)",
-                    "ai_disaster_type": "Enum (nullable)",
-                    "ai_informativeness": "Enum (nullable)",
-                    "ai_humanitarian_category": "Enum (nullable)",
-                    "ai_damage_severity": "Enum (nullable)",
-                    "raw_payload": "JSON - original submission payload",
-                    "created_at": "DateTime",
-                    "updated_at": "DateTime"
+                    "affected_units": "Integer",
+                    "damage_level": "Enum: minimal | partial | complete",
+                    "photo_url": "String (URL)",
+                    "submitted_at": "DateTime",
                 },
                 "Responder": {
-                    "responder_id": "UUID (primary key)",
+                    "responder_id": "UUID (primary key, auto)",
                     "name": "String",
                     "email": "Email (unique)",
                     "password_hash": "String (write-only)",
-                    "role": "Enum - admin/field/analyst/supervisor",
+                    "role": "Enum: admin | field | analyst | supervisor",
                     "organization": "String (optional)",
                     "is_active": "Boolean",
-                    "location": "JSON (GeoJSON Point) - responder's current location {'type':'Point','coordinates':[lon,lat]}",
-                    "location_description": "Text - human-readable location description",
-                    "last_login": "DateTime (nullable)",
-                    "created_at": "DateTime"
+                    "lat": "Float - latitude (write: used to set location)",
+                    "lon": "Float - longitude (write: used to set location)",
+                    "location": "GeoJSON Point - {'type':'Point','coordinates':[lon,lat]}",
+                    "location_description": "String",
                 }
-            },
-            "notes": [
-                "POST /api/reports/ accepts: client_id, location (GeoJSON), location_description, building_footprint_id, infrastructure_type, nature_of_crisis, debris, affected_units, damage_level, photo_url, submitted_at",
-                "Duplicate detection is AUTOMATIC via Django signals",
-                "Use /api/final-reports/ for dashboard data (already verified non-duplicates)",
-                "Use /api/reports/ for raw submissions (includes potential duplicates)",
-                "Responders must have location set for assignment optimization",
-                "GET /api/responders/nearest/?lon=X&lat=Y&max_distance=5000&limit=5 finds closest responders",
-            ],
-            "message": "This endpoint documents available routes, schemas, and automatic CrisisReport processing workflow."
+            }
         })
 
 
@@ -175,6 +111,8 @@ class CrisisReportViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'create':
             return SubmitSerializer
+        if self.action == 'list':
+            return CrisisReportListSerializer
         return FullSerializer
 
     def create(self, request, *args, **kwargs):
@@ -246,18 +184,26 @@ class CrisisReportViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['patch'], url_path='ai-fill')
     def ai_fill(self, request, pk=None):
-        """Patch AI-populated fields and set processed_at to now"""
+        """Patch AI-populated fields and sync to FinalCrisisReport"""
         instance = self.get_object()
         allowed = ['ai_damage_level', 'ai_disaster_type', 'ai_informativeness', 'ai_humanitarian_category', 'ai_damage_severity']
-        updated = False
         for k in allowed:
             if k in request.data:
                 setattr(instance, k, request.data.get(k))
-                updated = True
 
-        # processed_at override allowed, but set to now if not provided
         instance.processed_at = timezone.now()
         instance.save()
+
+        # Sync AI fields to the linked FinalCrisisReport
+        FinalCrisisReport.objects.filter(original_report_id=instance.report_id).update(
+            ai_damage_level=instance.ai_damage_level,
+            ai_disaster_type=instance.ai_disaster_type,
+            ai_informativeness=instance.ai_informativeness,
+            ai_humanitarian_category=instance.ai_humanitarian_category,
+            ai_damage_severity=instance.ai_damage_severity,
+            processed_at=instance.processed_at,
+        )
+
         serializer = FullSerializer(instance, context={'request': request})
         return Response(serializer.data)
 
@@ -393,6 +339,52 @@ class ResponderViewSet(viewsets.ModelViewSet):
             'responders_found': len(response_data),
             'responders': response_data
         })
+
+
+# ==================================================
+# RESPONDER LOGIN
+# ==================================================
+class ResponderLoginView(APIView):
+    """Authenticate a responder with email and password."""
+
+    def post(self, request):
+        email = request.data.get('email', '').strip().lower()
+        password = request.data.get('password', '')
+
+        if not email or not password:
+            return Response(
+                {'error': 'email and password are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            responder = Responder.objects.get(email__iexact=email)
+        except Responder.DoesNotExist:
+            return Response(
+                {'error': 'Invalid email or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        if not responder.is_active:
+            return Response(
+                {'error': 'Account is inactive.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if not check_password(password, responder.password_hash):
+            return Response(
+                {'error': 'Invalid email or password.'},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
+        responder.last_login = timezone.now()
+        responder.save(update_fields=['last_login'])
+
+        serializer = ResponderSerializer(responder)
+        return Response({
+            'message': 'Login successful.',
+            'responder': serializer.data,
+        }, status=status.HTTP_200_OK)
 
 
 # ==================================================
