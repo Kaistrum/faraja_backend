@@ -192,7 +192,7 @@ class ResponderAdmin(admin.ModelAdmin):
 class AssignmentAdmin(admin.ModelAdmin):
     list_display = ['assignment_id', 'responder', 'report', 'status', 'priority', 'assigned_at', 'due_date']
     list_filter = ['status', 'priority', 'assigned_at', 'due_date']
-    search_fields = ['assignment_id', 'responder__name', 'report__event_name', 'notes']
+    search_fields = ['assignment_id', 'responder__name', 'report__building_footprint_id', 'notes']
     readonly_fields = ['assignment_id', 'assigned_at']
     
     fieldsets = (
