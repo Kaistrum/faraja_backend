@@ -39,6 +39,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',
+    # Required so its built-in form templates are found by FORM_RENDERER
+    # below (TemplatesSetting uses APP_DIRS, unlike the default renderer).
+    'django.forms',
 
     # Third-party
     'rest_framework',
@@ -87,6 +90,12 @@ TEMPLATES = [
         },
     },
 ]
+
+# Form widgets (e.g. LocationMapWidget) ship their templates under the
+# project-level templates/ dir, which the default form renderer ignores
+# since it only searches installed apps' templates/ dirs. Point it at the
+# main TEMPLATES engine above so it honors DIRS too.
+FORM_RENDERER = 'django.forms.renderers.TemplatesSetting'
 
 # --------------------------------------------------
 # WSGI
